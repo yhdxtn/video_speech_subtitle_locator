@@ -1,0 +1,17 @@
+{
+  "name": "video_speech_subtitle_locator",
+  "version": "1.0.0",
+  "description": "PySide6 video speech subtitle locator using open-source Whisper ONNX models through Transformers.js.",
+  "type": "module",
+  "scripts": {
+    "asr:test": "node app/services/transformers_whisper_asr.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@img/sharp-libvips-win32-x64": "^1.3.2",
+    "@img/sharp-win32-x64": "^0.35.3",
+    "sharp": "^0.35.3",
+    "wav-decoder": "^1.3.0"
+  }
+}
