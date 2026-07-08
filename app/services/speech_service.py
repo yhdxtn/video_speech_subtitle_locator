@@ -10,10 +10,12 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterator
 
 import imageio_ffmpeg
+from opencc import OpenCC
 
 from app.config import TranscribeConfig
 
 StatusCallback = Callable[[str], None]
+SIMPLIFIER = OpenCC("t2s")
 
 
 class SpeechService:
@@ -123,7 +125,7 @@ class SpeechService:
 
         segments: list[Any] = []
         for item in payload:
-            text = str(item.get("text", "")).strip()
+            text = SIMPLIFIER.convert(str(item.get("text", "")).strip())
             if not text:
                 continue
             start = float(item.get("start", 0.0) or 0.0)
