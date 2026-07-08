@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
+from difflib import SequenceMatcher
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator
@@ -141,7 +143,7 @@ class SpeechService:
                     ],
                 )
             )
-        return segments
+        return self._merge_repeated_segments(segments)
 
     @staticmethod
     def _model_id(name: str) -> str:
@@ -153,6 +155,80 @@ class SpeechService:
             "small": "onnx-community/whisper-small",
         }
         return mapping.get(normalized, "onnx-community/whisper-base")
+
+    @classmethod
+    def _merge_repeated_segments(cls, segments: list[Any]) -> list[Any]:
+        merged: list[Any] = []
+        for segment in sorted(segments, key=lambda item: (item.start, item.end)):
+            segment.text = cls._collapse_repeated_text(str(segment.text).strip())
+            if not segment.text:
+                continue
+
+            if merged and cls._is_repeat(merged[-1], segment):
+                previous = merged[-1]
+                if len(cls._normalize_text(segment.text)) > len(
+                    cls._normalize_text(previous.text)
+                ):
+                    previous.text = segment.text
+                previous.end = max(previous.end, segment.end)
+                previous.words = [
+                    SimpleNamespace(
+                        start=previous.start,
+                        end=previous.end,
+                        probability=max(
+                            cls.segment_confidence(previous),
+                            cls.segment_confidence(segment),
+                        ),
+                    )
+                ]
+                continue
+
+            merged.append(segment)
+        return merged
+
+    @classmethod
+    def _is_repeat(cls, previous: Any, current: Any) -> bool:
+        gap = float(current.start) - float(previous.end)
+        if gap > 2.5:
+            return False
+
+        left = cls._normalize_text(str(previous.text))
+        right = cls._normalize_text(str(current.text))
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+
+        shorter = min(len(left), len(right))
+        if shorter < 3:
+            return False
+        if left in right or right in left:
+            return True
+
+        if shorter < 4:
+            return False
+        return SequenceMatcher(None, left, right).ratio() >= 0.92
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return re.sub(r"[^0-9a-zA-Z\u3400-\u4dbf\u4e00-\u9fff]+", "", text).lower()
+
+    @classmethod
+    def _collapse_repeated_text(cls, text: str) -> str:
+        normalized = cls._normalize_text(text)
+        if not normalized:
+            return ""
+
+        for unit_length in range(2, max(2, len(normalized) // 2) + 1):
+            unit = normalized[:unit_length]
+            repeats = len(normalized) // unit_length
+            if repeats < 2:
+                continue
+            repeated = unit * repeats
+            remainder = normalized[len(repeated) :]
+            if normalized == repeated + remainder and len(remainder) < unit_length:
+                return text[:unit_length]
+        return text
 
     @staticmethod
     def segment_timing(segment: Any) -> tuple[float, float]:
